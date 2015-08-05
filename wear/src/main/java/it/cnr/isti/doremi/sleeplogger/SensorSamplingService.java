@@ -16,15 +16,15 @@
 
 package it.cnr.isti.doremi.sleeplogger;
 
+import android.app.Notification;
 import android.app.Service;
 import android.content.Intent;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
-import android.os.Environment;
-import android.os.IBinder;
-import android.os.PowerManager;
+import android.os.*;
+import android.support.v4.app.NotificationCompat;
 import android.util.Log;
 
 import java.io.BufferedWriter;
@@ -46,6 +46,9 @@ public class SensorSamplingService extends Service
 	private volatile float[] lastAcc = new float[] {0, 0, 0};
 
 	private static int samples = 0;
+	private static float realSamplingFrequency = 0;
+	private long tsInit;
+	private long lastUptime;
 	private SensorManager mSensorManager;
 	private Sensor mHeartRateSensor;
 	private Sensor mAccelerationSensor;
@@ -72,33 +75,39 @@ public class SensorSamplingService extends Service
 
 	private static volatile boolean isRunning = false;
 	private static volatile boolean isStarted = false;
-	private Thread t = new Thread(new Runnable()
+
+	private Handler handler;
+	private HandlerThread t = new HandlerThread("MyThread");
+	private Runnable writeTask = new Runnable()
 	{
 		@Override
 		public void run()
 		{
-			while (isRunning)
+			if (isRunning)
 			{
-				if (bw != null)
-				{
-					try {
-						bw.write(String.format(Locale.ENGLISH, LOG_FORMAT,
-								System.currentTimeMillis(),
-								lastHB,
-								lastAcc[0], lastAcc[1], lastAcc[2]));
-
-						samples++;
-					} catch (IOException e) {
-						e.printStackTrace();
-					}
-				}
-
-				try {
-					Thread.sleep(100);
-				} catch (InterruptedException e) {}
+				lastUptime += SAMPLING_INTERVAL;
+				handler.postAtTime(writeTask, lastUptime);
 			}
+
+			long ts = System.currentTimeMillis();
+
+			if (bw != null)
+			{
+				try {
+					bw.write(String.format(Locale.ENGLISH, LOG_FORMAT,
+							ts,
+							lastHB,
+							lastAcc[0], lastAcc[1], lastAcc[2]));
+
+					samples++;
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+			}
+
+			realSamplingFrequency = 1000.0f / ((float)(ts - tsInit) / (float)samples);
 		}
-	});
+	};
 
 	public SensorSamplingService()
 	{
@@ -112,6 +121,11 @@ public class SensorSamplingService extends Service
 	public static int getSamples ()
 	{
 		return samples;
+	}
+
+	public static float getRealSamplingFrequency ()
+	{
+		return realSamplingFrequency;
 	}
 
 	@Override
@@ -144,7 +158,7 @@ public class SensorSamplingService extends Service
 			@Override
 			public void onAccuracyChanged(Sensor sensor, int i) {}
 		};
-		mSensorManager.registerListener(selHB, this.mHeartRateSensor, 1000000); // Forced to 1s
+		mSensorManager.registerListener(selHB, this.mHeartRateSensor, 500000); // Forced to 0.5s
 
 		mAccelerationSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
 		selAcc = new SensorEventListener() {
@@ -156,7 +170,7 @@ public class SensorSamplingService extends Service
 			@Override
 			public void onAccuracyChanged(Sensor sensor, int i) {}
 		};
-		mSensorManager.registerListener(selAcc, this.mAccelerationSensor, SAMPLING_INTERVAL * 1000);
+		mSensorManager.registerListener(selAcc, this.mAccelerationSensor, SAMPLING_INTERVAL * 750); // sampling interval * 0.75
 
 		// ENABLE IF REQUIRED
 /*		mGyroscopeSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
@@ -218,9 +232,19 @@ public class SensorSamplingService extends Service
 		isStarted = true;
 		wakeLock.acquire();
 
+		Notification notification = new NotificationCompat.Builder(this)
+				.setContentTitle("Logger")
+				.setContentText("Logger").build();
+		startForeground(101, notification);
+
 		samples = 0;
 		isRunning = true;
 		t.start();
+
+		handler = new Handler(t.getLooper());
+		tsInit = System.currentTimeMillis();
+		lastUptime = SystemClock.uptimeMillis() + SAMPLING_INTERVAL;
+		handler.postAtTime(writeTask, lastUptime);
 
 		return START_STICKY;
 	}
@@ -231,7 +255,9 @@ public class SensorSamplingService extends Service
 		Log.i(TAG, "onDestroy()");
 
 		isRunning = false;
-		t.interrupt();
+		t.quit();
+
+		stopForeground(true);
 
 		if (wakeLock != null)
 			if (wakeLock.isHeld())

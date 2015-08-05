@@ -42,7 +42,7 @@ public class MyActivity extends Activity
 			Log.d(TAG, "Updating UI..");
 			if (sensorInformation != null)
 			{
-				sensorInformation.setText("Samples: " + SensorSamplingService.getSamples());
+				sensorInformation.setText(String.format("Samples: %d @ %.2fHz", SensorSamplingService.getSamples(), SensorSamplingService.getRealSamplingFrequency()));
 				sensorInformation.postDelayed(m_UIUpdater, 1000);
 			}
 		}
