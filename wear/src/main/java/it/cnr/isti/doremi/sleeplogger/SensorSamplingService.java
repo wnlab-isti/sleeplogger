@@ -31,9 +31,12 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.Writer;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
+import java.util.Timer;
+import java.util.TimerTask;
 
 public class SensorSamplingService extends Service
 {
@@ -42,13 +45,12 @@ public class SensorSamplingService extends Service
 	private static final int SAMPLING_FREQ = 1000 / SAMPLING_INTERVAL; // sampling freq [Hz]
 	private static final int SENSOR_TYPE_HEARTRATE_GEAR_LIVE = 65562;  // Samsung Gear Live custom HB sensor
 
-	private volatile float lastHB = 0;
-	private volatile float[] lastAcc = new float[] {0, 0, 0};
+	private volatile float lastHB = 0.0f;
+	private volatile float[] lastAcc = new float[] {0.0f, 0.0f, 0.0f};
 
-	private static int samples = 0;
-	private static float realSamplingFrequency = 0;
-	private long tsInit;
-	private long lastUptime;
+	private static long samples = 0;
+	private static float effectiveSamplingFrequency = 0.0f;
+
 	private SensorManager mSensorManager;
 	private Sensor mHeartRateSensor;
 	private Sensor mAccelerationSensor;
@@ -56,7 +58,6 @@ public class SensorSamplingService extends Service
 	private SensorEventListener selAcc = null;
 	private PowerManager powerManager;
 	private PowerManager.WakeLock wakeLock;
-	private BufferedWriter bw = null;
 	private SimpleDateFormat sdf = new SimpleDateFormat("yyyy.MM.dd.HH.mm.ss.SSS", Locale.ENGLISH);
 
 	// ADDITIONAL SENSORS, ENABLE IF NEEDED (!) modify the header and format strings accordingly
@@ -72,42 +73,64 @@ public class SensorSamplingService extends Service
 */
 	private static final String LOG_HEADER = "TS,  BPM, AccX, AccY, AccZ\r\n";
 	private static final String LOG_FORMAT = "%d,%3.1f,%3.3f,%3.3f,%3.3f\r\n";
+	private static final String LOG_PATH = Environment.getExternalStorageDirectory()
+			+ File.separator + "logs";
 
 	private static volatile boolean isRunning = false;
 	private static volatile boolean isStarted = false;
 
-	private Handler handler;
-	private HandlerThread t = new HandlerThread("MyThread");
-	private Runnable writeTask = new Runnable()
-	{
-		@Override
-		public void run()
-		{
-			if (isRunning)
-			{
-				lastUptime += SAMPLING_INTERVAL;
-				handler.postAtTime(writeTask, lastUptime);
-			}
+	private class LogWriter extends TimerTask {
+		private Writer printer = null;
+		private long firstTimestamp = 0;
 
-			long ts = System.currentTimeMillis();
+		public LogWriter(File logFile)
+				throws IOException {
 
-			if (bw != null)
-			{
-				try {
-					bw.write(String.format(Locale.ENGLISH, LOG_FORMAT,
-							ts,
-							lastHB,
-							lastAcc[0], lastAcc[1], lastAcc[2]));
+			logFile.getParentFile().mkdirs();
+			logFile.createNewFile();
 
-					samples++;
-				} catch (IOException e) {
-					e.printStackTrace();
-				}
-			}
+			printer = new FileWriter(logFile);
+			printer.write(LOG_HEADER);
+			printer.flush();
 
-			realSamplingFrequency = 1000.0f / ((float)(ts - tsInit) / (float)samples);
+			firstTimestamp = System.currentTimeMillis();
 		}
-	};
+
+		public LogWriter(String fileName)
+				throws IOException {
+
+			this(new File(fileName));
+		}
+
+		@Override
+		public void run() {
+			try {
+
+				long timestamp = System.currentTimeMillis();
+				printer.write(String.format(Locale.ENGLISH, LOG_FORMAT,
+						timestamp, lastHB,
+						lastAcc[0], lastAcc[1], lastAcc[2]));
+				printer.flush();
+				effectiveSamplingFrequency = 1000.0f /
+						( (float) (timestamp - firstTimestamp) / (float) ++samples );
+
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
+
+		@Override
+		public void finalize()
+				throws Throwable {
+
+			printer.close();
+			Log.d(TAG, "File closed");
+			super.finalize();
+		}
+	}
+
+	private Timer writerScheduler = null;
+	private LogWriter logWriter = null;
 
 	public SensorSamplingService()
 	{
@@ -118,15 +141,12 @@ public class SensorSamplingService extends Service
 		return isStarted;
 	}
 
-	public static int getSamples ()
+	public static long getSamples ()
 	{
 		return samples;
 	}
 
-	public static float getRealSamplingFrequency ()
-	{
-		return realSamplingFrequency;
-	}
+	public static float getRealSamplingFrequency () { return effectiveSamplingFrequency; }
 
 	@Override
 	public IBinder onBind(Intent intent)
@@ -151,9 +171,7 @@ public class SensorSamplingService extends Service
 		mHeartRateSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_HEART_RATE);
 		selHB = new SensorEventListener() {
 			@Override
-			public void onSensorChanged(SensorEvent sensorEvent) {
-				lastHB = sensorEvent.values[0];
-			}
+			public void onSensorChanged(SensorEvent sensorEvent) { lastHB = sensorEvent.values[0]; }
 
 			@Override
 			public void onAccuracyChanged(Sensor sensor, int i) {}
@@ -163,9 +181,7 @@ public class SensorSamplingService extends Service
 		mAccelerationSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
 		selAcc = new SensorEventListener() {
 			@Override
-			public void onSensorChanged(SensorEvent sensorEvent) {
-				lastAcc = sensorEvent.values;
-			}
+			public void onSensorChanged(SensorEvent sensorEvent) { lastAcc = sensorEvent.values; }
 
 			@Override
 			public void onAccuracyChanged(Sensor sensor, int i) {}
@@ -203,22 +219,21 @@ public class SensorSamplingService extends Service
 		};
 		mSensorManager.registerListener(selStep, this.mStepSensor, 1000000); // Forced to 1s
 */
-		File logFile = new File(Environment.getExternalStorageDirectory() + File.separator + "logs" + File.separator + "hb_log-" + sdf.format(new Date()) + ".txt");
+
+		writerScheduler = new Timer(TAG + "log writer");
+
+		File logFile = new File(LOG_PATH, "hb_log-" + sdf.format(new Date()) + ".txt");
+
 		try {
-			logFile.getParentFile().mkdirs();
-			logFile.createNewFile();
+
+			logWriter = new LogWriter(logFile);
+
 		} catch (IOException e) {
 			e.printStackTrace();
 			System.exit(1);
 		}
 
-		try {
-			Log.d (TAG, "Log saved to : " + logFile.getAbsolutePath());
-			bw = new BufferedWriter(new FileWriter(logFile));
-			bw.write(String.format(Locale.ENGLISH, LOG_HEADER));
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+		Log.d(TAG, "Log saved to : " + logFile.getAbsolutePath());
 
 		powerManager = (PowerManager) getSystemService(POWER_SERVICE);
 		wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SensorSamplingServiceWakeLock");
@@ -232,19 +247,14 @@ public class SensorSamplingService extends Service
 		isStarted = true;
 		wakeLock.acquire();
 
+		writerScheduler.scheduleAtFixedRate(logWriter, SAMPLING_INTERVAL, SAMPLING_INTERVAL);
+
 		Notification notification = new NotificationCompat.Builder(this)
 				.setContentTitle("Logger")
 				.setContentText("Logger").build();
 		startForeground(101, notification);
 
-		samples = 0;
 		isRunning = true;
-		t.start();
-
-		handler = new Handler(t.getLooper());
-		tsInit = System.currentTimeMillis();
-		lastUptime = SystemClock.uptimeMillis() + SAMPLING_INTERVAL;
-		handler.postAtTime(writeTask, lastUptime);
 
 		return START_STICKY;
 	}
@@ -255,22 +265,13 @@ public class SensorSamplingService extends Service
 		Log.i(TAG, "onDestroy()");
 
 		isRunning = false;
-		t.quit();
+		writerScheduler.cancel();
 
 		stopForeground(true);
 
 		if (wakeLock != null)
 			if (wakeLock.isHeld())
 				wakeLock.release();
-
-		if (bw != null) {
-			try {
-				bw.close();
-				Log.d (TAG, "File closed");
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-		}
 
 		if (selHB != null)
 			mSensorManager.unregisterListener(selHB);
