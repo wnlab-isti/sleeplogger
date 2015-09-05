@@ -27,7 +27,6 @@ import android.os.*;
 import android.support.v4.app.NotificationCompat;
 import android.util.Log;
 
-import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -41,9 +40,10 @@ import java.util.TimerTask;
 public class SensorSamplingService extends Service
 {
 	private static final String TAG = "SensorSamplingService";
-	private static final int SAMPLING_INTERVAL = 100;                  // sampling interval [ms]
-	private static final int SAMPLING_FREQ = 1000 / SAMPLING_INTERVAL; // sampling freq [Hz]
-	private static final int SENSOR_TYPE_HEARTRATE_GEAR_LIVE = 65562;  // Samsung Gear Live custom HB sensor
+	private static final int SAMPLING_INTERVAL = 100;                  	// sampling interval [ms]
+	private static final int SAMPLING_FREQ = 1000 / SAMPLING_INTERVAL;	// sampling freq [Hz]
+	private static final int SAMPLES_PER_HOUR = SAMPLING_FREQ * 3600;	// samples per hour [Hz * 60 * 60]
+	private static final int SENSOR_TYPE_HEARTRATE_GEAR_LIVE = 65562;  	// Samsung Gear Live custom HB sensor
 
 	private volatile float lastHB = 0.0f;
 	private volatile float[] lastAcc = new float[] {0.0f, 0.0f, 0.0f};
@@ -79,38 +79,100 @@ public class SensorSamplingService extends Service
 	private static volatile boolean isRunning = false;
 	private static volatile boolean isStarted = false;
 
+	/**
+	 * Task to write a single entry of log file, to be used
+	 * in conjunction with Timer. Also updates {@code SensorSamplingService.samples}
+	 * and {@code SensorSamplingService.effectiveSamplingFrequency}, since they're
+	 * related to log writing
+	 */
+
 	private class LogWriter extends TimerTask {
 		private Writer printer = null;
 		private long firstTimestamp = 0;
 
-		public LogWriter(File logFile)
-				throws IOException {
+		private void closeLog() throws IOException {
+			printer.close();
+			Log.d(TAG, "Log file closed");
+		}
 
+		/**
+		 * Constructs a new LogWriter, creating logFile and parent
+		 * directories if necessary, and writes log header into logFile
+		 * @param logFile The file log entries will be written to
+		 * @throws IOException If something wrong occur when log file
+		 * is created or open, or when writing header line
+		 */
+
+		public LogWriter(File logFile) throws IOException {
 			logFile.getParentFile().mkdirs();
 			logFile.createNewFile();
 
 			printer = new FileWriter(logFile);
 			printer.write(LOG_HEADER);
-			printer.flush();
 
 			firstTimestamp = System.currentTimeMillis();
 		}
 
-		public LogWriter(String fileName)
-				throws IOException {
+		/**
+		 * Convenience constructor that uses a string for log file
+		 * path rather than a {@code File} object
+		 * @param filePath The path of the file log entries will
+		 * be written into
+		 * @throws IOException If something wrong occur when log
+		 * file is created or open, or when writing header line
+		 */
 
-			this(new File(fileName));
+		public LogWriter(String filePath) throws IOException {
+			this( new File(filePath) );
 		}
+
+		/**
+		 * {@inheritDoc}. Also, closes log file.
+		 * @return {@inheritDoc}
+		 */
+
+		@Override
+		public boolean cancel() {
+			try {
+
+				closeLog();
+
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+			return super.cancel();
+		}
+
+		/**
+		 * {@inheritDoc}. Also closes log file
+		 * @throws {@inheritDoc}
+		 */
+
+		@Override
+		public void finalize() throws Throwable {
+			closeLog();
+			super.finalize();
+		}
+
+		/**
+		 * Writes a log entry. First writes a line for round number of
+		 * hours of sleep when they occur. Then writes the log
+		 * entry, using {@code LOG_FORMAT} and current time stamp.
+		 * Finally, updates {@code SensorSamplingService.samples}
+		 * and {@code SensorSamplingService.effectiveSamplingFrequency}
+		 */
 
 		@Override
 		public void run() {
 			try {
 
+				if ( samples % SAMPLES_PER_HOUR == 0 )
+					printer.write( ( samples / SAMPLES_PER_HOUR + 1 ) + " hour of sleep\r\n" );
+
 				long timestamp = System.currentTimeMillis();
 				printer.write(String.format(Locale.ENGLISH, LOG_FORMAT,
 						timestamp, lastHB,
 						lastAcc[0], lastAcc[1], lastAcc[2]));
-				printer.flush();
 				effectiveSamplingFrequency = 1000.0f /
 						( (float) (timestamp - firstTimestamp) / (float) ++samples );
 
@@ -118,41 +180,21 @@ public class SensorSamplingService extends Service
 				e.printStackTrace();
 			}
 		}
-
-		@Override
-		public void finalize()
-				throws Throwable {
-
-			printer.close();
-			Log.d(TAG, "File closed");
-			super.finalize();
-		}
 	}
 
 	private Timer writerScheduler = null;
 	private LogWriter logWriter = null;
 
-	public SensorSamplingService()
-	{
-	}
+	public SensorSamplingService() {}
 
-	public static boolean isStarted ()
-	{
-		return isStarted;
-	}
+	public static boolean isStarted () { return isStarted; }
 
-	public static long getSamples ()
-	{
-		return samples;
-	}
+	public static long getSamples () { return samples; }
 
 	public static float getRealSamplingFrequency () { return effectiveSamplingFrequency; }
 
 	@Override
-	public IBinder onBind(Intent intent)
-	{
-		return null; // service is unbounded so no need to bind
-	}
+	public IBinder onBind(Intent intent) { return null; } // service is unbounded so no need to bind
 
 	@Override
 	public void onCreate ()
@@ -265,7 +307,7 @@ public class SensorSamplingService extends Service
 		Log.i(TAG, "onDestroy()");
 
 		isRunning = false;
-		writerScheduler.cancel();
+		logWriter.cancel();
 
 		stopForeground(true);
 
