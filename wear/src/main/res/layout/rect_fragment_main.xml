@@ -4,8 +4,9 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    tools:context=".MyActivity"
-    tools:deviceIds="wear_square" android:padding="12dp">
+    android:padding="12dp"
+    tools:context="it.cnr.isti.doremi.sleeplogger.MainActivity"
+    tools:deviceIds="wear_square" >
 
     <TextView
         android:id="@+id/rate"

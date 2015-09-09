@@ -182,7 +182,7 @@ public class SensorSamplingService extends Service
 		}
 	}
 
-	private Timer writerScheduler = null;
+    private File logFile = null;
 	private LogWriter logWriter = null;
 
 	public SensorSamplingService() {}
@@ -262,20 +262,8 @@ public class SensorSamplingService extends Service
 		mSensorManager.registerListener(selStep, this.mStepSensor, 1000000); // Forced to 1s
 */
 
-		writerScheduler = new Timer(TAG + "log writer");
-
-		File logFile = new File(LOG_PATH, "hb_log-" + sdf.format(new Date()) + ".txt");
-
-		try {
-
-			logWriter = new LogWriter(logFile);
-
-		} catch (IOException e) {
-			e.printStackTrace();
-			System.exit(1);
-		}
-
-		Log.d(TAG, "Log saved to : " + logFile.getAbsolutePath());
+		logFile = new File(LOG_PATH, "hb_log-" + sdf.format(new Date()) + ".txt");
+        Log.d(TAG, "Log saved to : " + logFile.getAbsolutePath());
 
 		powerManager = (PowerManager) getSystemService(POWER_SERVICE);
 		wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SensorSamplingServiceWakeLock");
@@ -289,7 +277,16 @@ public class SensorSamplingService extends Service
 		isStarted = true;
 		wakeLock.acquire();
 
-		writerScheduler.scheduleAtFixedRate(logWriter, SAMPLING_INTERVAL, SAMPLING_INTERVAL);
+        try {
+
+            logWriter = new LogWriter(logFile, logFile.exists());
+
+        } catch (IOException e) {
+            e.printStackTrace();
+            System.exit(1);
+        }
+
+		Scheduler.timer.scheduleAtFixedRate(logWriter, SAMPLING_INTERVAL, SAMPLING_INTERVAL);
 
 		Notification notification = new NotificationCompat.Builder(this)
 				.setContentTitle("Logger")

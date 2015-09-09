@@ -26,90 +26,32 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
 
+import java.util.TimerTask;
+
 public class MyActivity extends Activity
-{
-	private static final String TAG = MyActivity.class.getName();
+        implements MainFragment.EventsListener {
 
-	private TextView rate = null;
-	private TextView sensorInformation = null;
-	private Button btnStart = null;
+    private static final String TAG = MyActivity.class.getName();
+    static int UI_REFRESH_INTERVAL = 1000;
 
-	private Runnable m_UIUpdater = new Runnable()
-	{
-		@Override
-		public void run()
-		{
-			Log.d(TAG, "Updating UI..");
-			if (sensorInformation != null)
-			{
-				sensorInformation.setText(String.format("Samples: %d @ %.2fHz", SensorSamplingService.getSamples(), SensorSamplingService.getRealSamplingFrequency()));
-				sensorInformation.postDelayed(m_UIUpdater, 1000);
-			}
-		}
-	};
+    public void onSettingsButtonClick() {}
+
+    public void startSampling() {
+        Intent myIntent = new Intent(MyActivity.this, SensorSamplingService.class);
+        startService(myIntent);
+    }
+
+    public void stopSampling() {
+        Intent myIntent = new Intent(MyActivity.this, SensorSamplingService.class);
+        stopService(myIntent);
+    }
 
 	@Override
-	protected void onCreate(Bundle savedInstanceState)
-	{
-		Log.d (TAG, "onCreate()");
+	protected void onCreate(Bundle savedInstanceState) {
+		Log.d(TAG, "onCreate()");
 		super.onCreate(savedInstanceState);
 
 		setContentView(R.layout.activity_my);
-
-		final WatchViewStub stub = (WatchViewStub) findViewById(R.id.watch_view_stub);
-		stub.setOnLayoutInflatedListener(new WatchViewStub.OnLayoutInflatedListener() {
-			@Override
-			public void onLayoutInflated(WatchViewStub stub) {
-
-				rate = (TextView) stub.findViewById(R.id.rate);
-				sensorInformation = (TextView) stub.findViewById(R.id.sensor);
-
-				btnStart = (Button) stub.findViewById(R.id.btnStart);
-				btnStart.setOnClickListener(new View.OnClickListener()
-				{
-					@Override
-					public void onClick(View view) {
-						if (!SensorSamplingService.isStarted())
-						{
-							Intent myIntent = new Intent(MyActivity.this, SensorSamplingService.class);
-							startService(myIntent);
-
-							btnStart.setText("STOP");
-							btnStart.setTextColor(Color.RED);
-							rate.setText("Sampling..");
-
-							sensorInformation.post(m_UIUpdater);
-						}
-						else
-						{
-							Intent myIntent = new Intent(MyActivity.this, SensorSamplingService.class);
-							stopService(myIntent);
-
-							btnStart.setText("START");
-							btnStart.setTextColor(Color.GREEN);
-							rate.setText("Ready");
-
-							sensorInformation.removeCallbacks(m_UIUpdater);
-						}
-					}
-				});
-
-				if (SensorSamplingService.isStarted())
-				{
-					btnStart.setText("STOP");
-					btnStart.setTextColor(Color.RED);
-					rate.setText("Sampling..");
-					sensorInformation.post(m_UIUpdater);
-				}
-				else
-				{
-					btnStart.setText("START");
-					btnStart.setTextColor(Color.GREEN);
-					rate.setText("Ready");
-					sensorInformation.setText("Samples: ---");
-				}
-			}
-		});
 	}
 
 	@Override

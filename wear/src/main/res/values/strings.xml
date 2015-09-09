@@ -2,5 +2,7 @@
 <resources>
 
     <string name="app_name">SleepLogger</string>
+    <string name="title_fragment_main">SleepLogger</string>
+    <string name="title_fragment_settings">Settings</string>
 
 </resources>
