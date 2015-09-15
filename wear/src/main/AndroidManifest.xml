@@ -14,14 +14,16 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+
     <application
         android:allowBackup="true"
         android:icon="@drawable/ic_launcher"
         android:label="Sleep Logger"
         android:theme="@android:style/Theme.DeviceDefault" >
-        
-		<activity
-            android:name="it.cnr.isti.doremi.sleeplogger.MainActivity"
+        <activity
+            android:name=".MainActivity"
             android:label="@string/app_name"
             android:launchMode="singleInstance" >
             <intent-filter>
@@ -30,9 +32,8 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-
         <activity
-            android:name="it.cnr.isti.doremi.sleeplogger.MyActivity"
+            android:name=".MyActivity"
             android:label="@string/app_name"
             android:launchMode="singleInstance" >
             <intent-filter>
@@ -43,7 +44,7 @@
         </activity>
 
         <service
-            android:name="it.cnr.isti.doremi.sleeplogger.SensorSamplingService"
+            android:name=".SensorSamplingService"
             android:enabled="true"
             android:exported="false" >
         </service>

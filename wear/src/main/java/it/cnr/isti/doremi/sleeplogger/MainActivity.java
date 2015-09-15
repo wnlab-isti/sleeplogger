@@ -6,16 +6,19 @@ import android.app.Activity;
 import android.app.Fragment;
 import android.app.FragmentManager;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.res.Resources;
 import android.support.v13.app.FragmentStatePagerAdapter;
 import android.os.Bundle;
 import android.support.v4.view.ViewPager;
 import android.util.Log;
 
-public class MainActivity extends Activity
-        implements MainFragment.EventsListener {
+public class MainActivity extends Activity implements
+        MainFragment.EventsListener,
+        SamplingIntervalFragment.EventsListener,
+        UIRefreshFragment.EventsListener {
 
     private static final String TAG = MyActivity.class.getName();
-    public static final int UI_REFRESH_INTERVAL = 1000;
 
     /**
      * A {@link FragmentStatePagerAdapter} that returns a fragment corresponding to
@@ -37,7 +40,10 @@ public class MainActivity extends Activity
                     return new MainFragment();
 
                 case 1:
-                    return new SettingsFragment();
+                    return new SamplingIntervalFragment();
+
+                case 2:
+                    return new UIRefreshFragment();
 
                 default:
                     return null;
@@ -46,7 +52,7 @@ public class MainActivity extends Activity
 
         // Returns total number of pages
         @Override
-        public int getCount() { return 2; }
+        public int getCount() { return 3; }
 
         @Override
         public CharSequence getPageTitle(int position) {
@@ -56,6 +62,9 @@ public class MainActivity extends Activity
                     return getString(R.string.title_fragment_main).toUpperCase(l);
 
                 case 1:
+                    return getString(R.string.title_fragment_settings).toUpperCase(l);
+
+                case 2:
                     return getString(R.string.title_fragment_settings).toUpperCase(l);
 
                 default:
@@ -71,14 +80,46 @@ public class MainActivity extends Activity
      */
     ViewPager mViewPager;
 
-    public void startSampling() {
-        Intent myIntent = new Intent(MainActivity.this, SensorSamplingService.class);
-        startService(myIntent);
+    private SharedPreferences settings = null;
+    private int UI_REFRESH_INTERVAL;
+
+    public boolean isSampling() {
+        return SensorSamplingService.isStarted();
     }
 
-    public void stopSampling() {
-        Intent myIntent = new Intent(MainActivity.this, SensorSamplingService.class);
-        stopService(myIntent);
+    public boolean toggleSampling() {
+        Intent samplingIntent = new Intent(MainActivity.this,
+                SensorSamplingService.class);
+        if (SensorSamplingService.isStarted()) {
+            stopService(samplingIntent);
+            return false;
+        }
+        else {
+            startService(samplingIntent);
+            return true;
+        }
+    }
+
+    public int getUiRefreshInterval() {
+        return UI_REFRESH_INTERVAL;
+    }
+
+    public void setUiRefreshInterval(int uiRefreshInterval) {
+        if (UI_REFRESH_INTERVAL != uiRefreshInterval)
+            UI_REFRESH_INTERVAL = uiRefreshInterval;
+    }
+
+    public String getInfo(String format) {
+        return String.format(format, SensorSamplingService.getSamples(),
+                SensorSamplingService.getRealSamplingFrequency());
+    }
+
+    public int getSamplingInterval() {
+        return SensorSamplingService.getSamplingInterval();
+    }
+
+    public void setSamplingInterval(int samplingInterval) {
+        SensorSamplingService.setSamplingInterval(samplingInterval);
     }
 
     @Override
@@ -100,12 +141,26 @@ public class MainActivity extends Activity
     protected void onStart() {
         Log.d(TAG, "onStart()");
         super.onStart();
+
+        if (settings == null) {
+            settings = getSharedPreferences("settings.xml", MODE_PRIVATE);
+            Resources data = getResources();
+            UI_REFRESH_INTERVAL = settings.getInt("UIRefreshInterval",
+                    data.getInteger(R.integer.default_ui_refresh_interval));
+            SensorSamplingService.setSamplingInterval(settings.getInt("SamplingInterval",
+                    data.getInteger(R.integer.default_sampling_interval)));
+        }
     }
 
     @Override
     protected void onStop()	{
         Log.d (TAG, "onStop()");
         super.onStop();
+
+        settings.edit()
+                .putInt("UIRefreshInterval", UI_REFRESH_INTERVAL)
+                .putInt("SamplingInterval", SensorSamplingService.getSamplingInterval())
+                .apply();
     }
 
     @Override

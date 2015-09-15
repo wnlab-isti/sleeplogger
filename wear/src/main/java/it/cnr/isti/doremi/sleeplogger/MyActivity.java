@@ -28,11 +28,10 @@ import android.widget.TextView;
 
 import java.util.TimerTask;
 
-public class MyActivity extends Activity
-        implements MainFragment.EventsListener {
+public class MyActivity extends Activity {
 
     private static final String TAG = MyActivity.class.getName();
-    static int UI_REFRESH_INTERVAL = 1000;
+    private static int UI_REFRESH_INTERVAL = 1000;
 
     public void onSettingsButtonClick() {}
 

@@ -34,15 +34,14 @@ import java.io.Writer;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
-import java.util.Timer;
 import java.util.TimerTask;
 
 public class SensorSamplingService extends Service
 {
 	private static final String TAG = "SensorSamplingService";
-	private static final int SAMPLING_INTERVAL = 100;                  	// sampling interval [ms]
-	private static final int SAMPLING_FREQ = 1000 / SAMPLING_INTERVAL;	// sampling freq [Hz]
-	private static final int SAMPLES_PER_HOUR = SAMPLING_FREQ * 3600;	// samples per hour [Hz * 60 * 60]
+	private static int SAMPLING_INTERVAL = -1;                          // sampling interval [ms]
+	private static int SAMPLING_FREQ;                                   // sampling freq [Hz]
+	private static int SAMPLES_PER_HOUR;	                            // samples per hour [Hz * 60 * 60]
 	private static final int SENSOR_TYPE_HEARTRATE_GEAR_LIVE = 65562;  	// Samsung Gear Live custom HB sensor
 
 	private volatile float lastHB = 0.0f;
@@ -79,7 +78,7 @@ public class SensorSamplingService extends Service
 	private static volatile boolean isRunning = false;
 	private static volatile boolean isStarted = false;
 
-	/**
+    /**
 	 * Task to write a single entry of log file, to be used
 	 * in conjunction with Timer. Also updates {@code SensorSamplingService.samples}
 	 * and {@code SensorSamplingService.effectiveSamplingFrequency}, since they're
@@ -111,6 +110,7 @@ public class SensorSamplingService extends Service
 			printer.write(LOG_HEADER);
 
 			firstTimestamp = System.currentTimeMillis();
+            samples = 0;
 		}
 
 		/**
@@ -182,7 +182,6 @@ public class SensorSamplingService extends Service
 		}
 	}
 
-    private File logFile = null;
 	private LogWriter logWriter = null;
 
 	public SensorSamplingService() {}
@@ -193,7 +192,17 @@ public class SensorSamplingService extends Service
 
 	public static float getRealSamplingFrequency () { return effectiveSamplingFrequency; }
 
-	@Override
+    public static int getSamplingInterval() { return SAMPLING_INTERVAL; }
+
+    public static void setSamplingInterval(int samplingInterval) {
+        if (samplingInterval != SAMPLING_INTERVAL) {
+            SAMPLING_INTERVAL = samplingInterval;
+            SAMPLING_FREQ = 1000 / SAMPLING_INTERVAL;
+            SAMPLES_PER_HOUR = SAMPLING_FREQ * 3600;
+        }
+    }
+
+    @Override
 	public IBinder onBind(Intent intent) { return null; } // service is unbounded so no need to bind
 
 	@Override
@@ -262,10 +271,7 @@ public class SensorSamplingService extends Service
 		mSensorManager.registerListener(selStep, this.mStepSensor, 1000000); // Forced to 1s
 */
 
-		logFile = new File(LOG_PATH, "hb_log-" + sdf.format(new Date()) + ".txt");
-        Log.d(TAG, "Log saved to : " + logFile.getAbsolutePath());
-
-		powerManager = (PowerManager) getSystemService(POWER_SERVICE);
+        powerManager = (PowerManager) getSystemService(POWER_SERVICE);
 		wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SensorSamplingServiceWakeLock");
 	}
 
@@ -277,16 +283,23 @@ public class SensorSamplingService extends Service
 		isStarted = true;
 		wakeLock.acquire();
 
+        File logFile = new File(LOG_PATH, "hb_log-" + sdf.format(new Date()) + ".txt");
+        Log.d(TAG, "Log saved to : " + logFile.getAbsolutePath());
+
         try {
 
-            logWriter = new LogWriter(logFile, logFile.exists());
+            logWriter = new LogWriter(logFile);
 
         } catch (IOException e) {
             e.printStackTrace();
             System.exit(1);
         }
 
-		Scheduler.timer.scheduleAtFixedRate(logWriter, SAMPLING_INTERVAL, SAMPLING_INTERVAL);
+        // MainActivity should have set SAMPLING_INTERVAL at this point, but just in case...
+        if (SAMPLING_INTERVAL == -1)
+            setSamplingInterval(getResources().getInteger(R.integer.default_sampling_interval));
+
+        Scheduler.timer.scheduleAtFixedRate(logWriter, SAMPLING_INTERVAL, SAMPLING_INTERVAL);
 
 		Notification notification = new NotificationCompat.Builder(this)
 				.setContentTitle("Logger")
@@ -304,7 +317,9 @@ public class SensorSamplingService extends Service
 		Log.i(TAG, "onDestroy()");
 
 		isRunning = false;
+
 		logWriter.cancel();
+        logWriter = null;
 
 		stopForeground(true);
 

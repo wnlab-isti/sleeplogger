@@ -23,6 +23,7 @@ import java.util.TimerTask;
 public class MainFragment extends Fragment {
 
     private static final String TAG = MainFragment.class.getName();
+    private static final String INFO_FORMAT = "Samples: %d @ %.2fHz";
 
     /**
      * This interface must be implemented by activities that contain this
@@ -35,24 +36,26 @@ public class MainFragment extends Fragment {
      * >Communicating with Other Fragments</a> for more information.
      */
     public interface EventsListener {
-        void startSampling();
-        void stopSampling();
+        boolean isSampling();
+        boolean toggleSampling();
+        int getUiRefreshInterval();
+        String getInfo(String format);
     }
 
     private class InfoRefresh extends TimerTask {
 
+        private Runnable refreshTask = new Runnable() {
+
+            @Override
+            public void run() {
+                sensorInformation.setText(listener.getInfo(INFO_FORMAT));
+            }
+        };
+
         @Override
         public void run() {
             Log.d(TAG, "Updating UI..");
-            MainFragment.this.getActivity().runOnUiThread(new Runnable() {
-
-                @Override
-                public void run() {
-                    sensorInformation.setText(String.format("Samples: %d @ %.2fHz",
-                            SensorSamplingService.getSamples(),
-                            SensorSamplingService.getRealSamplingFrequency()));
-                }
-            });
+            MainFragment.this.getActivity().runOnUiThread(refreshTask);
         }
     }
 
@@ -79,6 +82,7 @@ public class MainFragment extends Fragment {
 
     @Override
     public void onAttach(Activity activity) {
+        Log.d(TAG, "onAttach()");
         super.onAttach(activity);
 
         if (activity instanceof EventsListener)
@@ -91,12 +95,13 @@ public class MainFragment extends Fragment {
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
-
+        Log.d(TAG, "onCreateView()");
         return inflater.inflate(R.layout.fragment_main, container, false);
     }
 
     @Override
     public void onActivityCreated(Bundle savedInstanceState) {
+        Log.d(TAG, "onActivityCreated()");
         super.onActivityCreated(savedInstanceState);
 
         WatchViewStub layoutRoot = (WatchViewStub)
@@ -113,28 +118,27 @@ public class MainFragment extends Fragment {
                 btnStart.setOnClickListener(new View.OnClickListener() {
                     @Override
                     public void onClick(View view) {
-                        if (!SensorSamplingService.isStarted()) {
+                        boolean isSampling = listener.toggleSampling();
+                        if (isSampling) {
                             setbtnStartStyle("STOP");
                             UIRefresher = new InfoRefresh();
-                            Scheduler.timer.scheduleAtFixedRate(UIRefresher,
-                                    MainActivity.UI_REFRESH_INTERVAL, MainActivity.UI_REFRESH_INTERVAL);
-                            listener.startSampling();
+                            Scheduler.timer.scheduleAtFixedRate(UIRefresher, 0,
+                                    listener.getUiRefreshInterval());
                         } else {
                             setbtnStartStyle("START");
-                            listener.stopSampling();
                             UIRefresher.cancel();
                             UIRefresher = null;
                         }
                     }
                 });
 
-                if (!SensorSamplingService.isStarted()) {
+                if (!listener.isSampling()) {
                     setbtnStartStyle("START");
                 } else {
                     setbtnStartStyle("STOP");
                     UIRefresher = new InfoRefresh();
-                    Scheduler.timer.scheduleAtFixedRate(UIRefresher,
-                            MainActivity.UI_REFRESH_INTERVAL, MainActivity.UI_REFRESH_INTERVAL);
+                    Scheduler.timer.scheduleAtFixedRate(UIRefresher, 0,
+                            listener.getUiRefreshInterval());
                 }
             }
         });
@@ -142,14 +146,18 @@ public class MainFragment extends Fragment {
 
     @Override
     public void onPause() {
+        Log.d(TAG, "onPause()");
         super.onPause();
 
-        UIRefresher.cancel();
-        UIRefresher = null;
+        if (UIRefresher != null) {
+            UIRefresher.cancel();
+            UIRefresher = null;
+        }
     }
 
     @Override
     public void onDetach() {
+        Log.d(TAG, "onDetach()");
         super.onDetach();
 
         listener = null;
