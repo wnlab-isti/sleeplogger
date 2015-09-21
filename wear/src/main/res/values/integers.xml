@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Settings values -->
+
+    <integer name="default_sampling_interval">100</integer> <!-- [ ms ] -->
+    <integer name="min_sampling_interval">50</integer> <!-- [ ms ] -->
+    <integer name="max_sampling_interval">1000</integer> <!-- [ ms ] -->
+    <integer name="step_sampling_interval">50</integer> <!-- [ ms ] -->
+    <integer name="default_ui_refresh_interval">1000</integer> <!-- [ ms ] -->
+    <integer name="min_ui_refresh_interval">100</integer> <!-- [ ms ] -->
+    <integer name="max_ui_refresh_interval">10000</integer> <!-- [ ms ] -->
+    <integer name="step_ui_refresh_interval">100</integer> <!-- [ ms ] -->
+
+</resources>

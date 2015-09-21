@@ -2,18 +2,23 @@ package it.cnr.isti.doremi.sleeplogger;
 
 
 import android.app.Activity;
-import android.app.Fragment;
 import android.content.res.Resources;
 import android.os.Bundle;
 import android.support.wearable.view.WatchViewStub;
 import android.util.Log;
+import android.widget.NumberPicker;
 
 /**
- * A simple {@link Fragment} subclass.
+ * This class displays a {@link NumberPicker} to allow setting of
+ * User Interface refresh interval. It extends {@link NumericSettingFragment},
+ * adding an interface for Activity communication and using super-class
+ * methods to implement its features, in method onActivityCreated().
+ * Minimum, maximum, default and step values are taken from integers.xml
  */
 public class UIRefreshFragment extends NumericSettingFragment {
 
     private static String TAG = UIRefreshFragment.class.getName();
+    private static String[] values;
 
     /**
      * This interface must be implemented by activities that contain this
@@ -37,8 +42,8 @@ public class UIRefreshFragment extends NumericSettingFragment {
     }
 
     @Override
-    protected void setValue() {
-        listener.setUiRefreshInterval(numberPicker.getValue());
+    protected void setValue(int val) {
+        listener.setUiRefreshInterval(val);
     }
 
     @Override
@@ -65,9 +70,15 @@ public class UIRefreshFragment extends NumericSettingFragment {
             @Override
             public void onLayoutInflated(WatchViewStub watchViewStub) {
                 Resources r = getResources();
+
+                if (values == null)
+                    values = NumericSettingFragment.makeValues(
+                            r.getInteger(R.integer.min_ui_refresh_interval),
+                            r.getInteger(R.integer.max_ui_refresh_interval),
+                            r.getInteger(R.integer.step_ui_refresh_interval));
+
                 initNumberPicker(R.id.uiRefreshInterval, listener.getUiRefreshInterval(),
-                        r.getInteger(R.integer.min_ui_refresh_interval),
-                        r.getInteger(R.integer.max_ui_refresh_interval));
+                        values);
             }
         });
     }

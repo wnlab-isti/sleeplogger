@@ -15,7 +15,9 @@ import android.widget.TextView;
 import java.util.TimerTask;
 
 /**
- * A simple {@link Fragment} subclass.
+ * This {@link Fragment} displays the main UI: the button
+ * to start/stop sampling and the info about samples number
+ * and effective sampling rate
  * Activities that contain this fragment must implement the
  * {@link MainFragment.EventsListener} interface
  * to handle interaction events.
@@ -36,8 +38,8 @@ public class MainFragment extends Fragment {
      * >Communicating with Other Fragments</a> for more information.
      */
     public interface EventsListener {
-        boolean isSampling();
-        boolean toggleSampling();
+        boolean isSampling();       // Used for initial setup only
+        boolean toggleSampling();   // Should return true if after toggling sampling is active, else false
         int getUiRefreshInterval();
         String getInfo(String format);
     }
@@ -55,6 +57,8 @@ public class MainFragment extends Fragment {
         @Override
         public void run() {
             Log.d(TAG, "Updating UI..");
+
+            // Need to use runOnUiThread because android won't let another thread change UI
             MainFragment.this.getActivity().runOnUiThread(refreshTask);
         }
     }

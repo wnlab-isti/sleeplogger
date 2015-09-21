@@ -36,19 +36,27 @@ import java.util.Date;
 import java.util.Locale;
 import java.util.TimerTask;
 
-public class SensorSamplingService extends Service
-{
-	private static final String TAG = "SensorSamplingService";
+/**
+ * This service samples heart beat and accelerations,
+ * writing them periodically to a local log file.
+ * Il also keeps track of total number of writings into
+ * the log and effective writing frequency for the
+ * current run, and provides encapsulation methods to
+ * access them
+ */
+
+public class SensorSamplingService extends Service {
+	private static final String TAG = SensorSamplingService.class.getName();
 	private static int SAMPLING_INTERVAL = -1;                          // sampling interval [ms]
 	private static int SAMPLING_FREQ;                                   // sampling freq [Hz]
 	private static int SAMPLES_PER_HOUR;	                            // samples per hour [Hz * 60 * 60]
 	private static final int SENSOR_TYPE_HEARTRATE_GEAR_LIVE = 65562;  	// Samsung Gear Live custom HB sensor
 
-	private volatile float lastHB = 0.0f;
-	private volatile float[] lastAcc = new float[] {0.0f, 0.0f, 0.0f};
+	private volatile float lastHB = 0.0f;                               // last sampled Heart Beat [BPM]
+	private volatile float[] lastAcc = new float[] {0.0f, 0.0f, 0.0f};  // last sampled accelerations [m/s^2]
 
-	private static long samples = 0;
-	private static float effectiveSamplingFrequency = 0.0f;
+	private static long samples = 0;                                    // number of log writings
+	private static float effectiveSamplingFrequency = 0.0f;             // effective log writing frequency
 
 	private SensorManager mSensorManager;
 	private Sensor mHeartRateSensor;
@@ -211,7 +219,7 @@ public class SensorSamplingService extends Service
 		super.onCreate();
 		Log.i(TAG, "onCreate()");
 
-		mSensorManager = ((SensorManager)getSystemService(SENSOR_SERVICE));
+		mSensorManager = ((SensorManager) getSystemService(SENSOR_SERVICE));
 
 		/*for (Sensor s : mSensorManager.getSensorList(Sensor.TYPE_ALL)) // print all the available sensors
 		{

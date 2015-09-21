@@ -13,12 +13,19 @@ import android.os.Bundle;
 import android.support.v4.view.ViewPager;
 import android.util.Log;
 
+/**
+ * This is the main activity of the applications: as every activity out
+ * there it manages Fragments display through {@link ViewPager} and serves
+ * as a mean of communication for them. Also, acts as a middle end between
+ * UI and the Service, and manages preferences.
+ */
+
 public class MainActivity extends Activity implements
         MainFragment.EventsListener,
         SamplingIntervalFragment.EventsListener,
         UIRefreshFragment.EventsListener {
 
-    private static final String TAG = MyActivity.class.getName();
+    private static final String TAG = MainActivity.class.getName();
 
     /**
      * A {@link FragmentStatePagerAdapter} that returns a fragment corresponding to
@@ -142,24 +149,28 @@ public class MainActivity extends Activity implements
         Log.d(TAG, "onStart()");
         super.onStart();
 
+        // Settings must be read here: android doesn't allow so in onCreate()
         if (settings == null) {
             settings = getSharedPreferences("settings.xml", MODE_PRIVATE);
             Resources data = getResources();
+
+            // Second argument is default value, returned if key is not found
             UI_REFRESH_INTERVAL = settings.getInt("UIRefreshInterval",
                     data.getInteger(R.integer.default_ui_refresh_interval));
             SensorSamplingService.setSamplingInterval(settings.getInt("SamplingInterval",
                     data.getInteger(R.integer.default_sampling_interval)));
+
         }
     }
 
     @Override
     protected void onStop()	{
-        Log.d (TAG, "onStop()");
+        Log.d(TAG, "onStop()");
         super.onStop();
 
         settings.edit()
-                .putInt("UIRefreshInterval", UI_REFRESH_INTERVAL)
                 .putInt("SamplingInterval", SensorSamplingService.getSamplingInterval())
+                .putInt("UIRefreshInterval", UI_REFRESH_INTERVAL)
                 .apply();
     }
 
@@ -171,8 +182,9 @@ public class MainActivity extends Activity implements
 
     @Override
     protected void onPause() {
-        Log.d (TAG, "onPause()");
+        Log.d(TAG, "onPause()");
         super.onPause();
+
     }
 
     @Override
